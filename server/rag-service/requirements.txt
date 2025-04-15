@@ -1,0 +1,16 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-dotenv>=1.0.0
+httpx>=0.25.0 # For potential async operations or calling other services
+
+# RAG Specific Dependencies
+# Vector DB Client (Example - Use 'pinecone' package now)
+pinecone>=4.0.0
+
+# Embedding Model Library
+sentence-transformers>=2.0.0
+
+# Langchain (for chunking, potentially orchestration)
+langchain>=0.1.0
+
+# Reranker (Optional - can use sentence-transformers cross-encoders later)

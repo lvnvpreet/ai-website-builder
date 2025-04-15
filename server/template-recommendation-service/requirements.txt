@@ -1,0 +1,4 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-dotenv>=1.0.0
+# Add ML libraries later (e.g., tensorflow/torch, scikit-learn)

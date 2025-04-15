@@ -1,0 +1,5 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-dotenv>=1.0.0
+spacy>=3.0.0
+# Add other dependencies later as needed (e.g., requests, etc.)

@@ -1,0 +1,10 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-dotenv>=1.0.0
+httpx>=0.25.0 # For potential async operations
+
+# LLM Client Libraries (Choose/add as needed)
+openai>=1.0.0 # Example for OpenAI models (GPT-4 etc.)
+# anthropic>=0.7.0 # Example for Anthropic models (Claude etc.)
+
+# Pydantic is included via fastapi
