@@ -2,6 +2,8 @@ import os
 from fastapi import FastAPI, Request, Response, HTTPException
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+import requests # Import requests for Ollama
+import json # Import json for Ollama payload
 from typing import List, Dict, Any
 from openai import OpenAI, OpenAIError # Import OpenAI client and error type
 # from anthropic import Anthropic # Keep for potential future use
@@ -21,15 +23,21 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "gpt-4")
 # ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 # ANTHROPIC_MODEL_NAME = os.getenv("ANTHROPIC_MODEL_NAME", "claude-3-opus-20240229")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") # Default Ollama URL
+OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "llama3") # Default Ollama model
 # Add other provider configs as needed
 
-# --- Initialize LLM Client ---
-llm_client = None
+# --- Initialize LLM Client (Only for providers that need a persistent client like OpenAI) ---
+llm_client = None # For OpenAI, Anthropic etc.
 try:
     if LLM_PROVIDER == "openai" and OPENAI_API_KEY:
         print(f"Initializing OpenAI client with model: {OPENAI_MODEL_NAME}")
-        llm_client = OpenAI(api_key=OPENAI_API_KEY) # Initialize the actual client
+        llm_client = OpenAI(api_key=OPENAI_API_KEY)
         print("OpenAI client initialized successfully.")
+    elif LLM_PROVIDER == "ollama":
+        print(f"LLM Provider set to Ollama. Using base URL: {OLLAMA_BASE_URL} and model: {OLLAMA_MODEL_NAME}")
+        # No persistent client needed for Ollama with requests library
+        pass
     # elif LLM_PROVIDER == "anthropic" and ANTHROPIC_API_KEY:
         # print(f"Initializing Anthropic client with model: {ANTHROPIC_MODEL_NAME}")
         # llm_client = Anthropic(api_key=ANTHROPIC_API_KEY) # Uncomment when ready
@@ -89,56 +97,80 @@ async def generate_content(data: GenerateContentInput):
     print(f"Received request to generate content for session: {data.sessionId}, template: {data.templateId}")
     print(f"Received RAG context items: {len(data.rag_context)}")
 
-    if llm_client is None:
-         # If no client is configured (e.g., missing API key), raise error
-         # unless explicitly set to "none" for testing without LLM.
-         if LLM_PROVIDER != "none":
-             raise HTTPException(status_code=503, detail=f"LLM client ({LLM_PROVIDER}) not available or configured.")
-         else:
-             # Handle "none" provider case - return placeholder or error? For now, placeholder.
-             print("LLM_PROVIDER is 'none', returning placeholder content.")
-             generated_content = "Placeholder content - LLM provider set to none."
-             # Fall through to return placeholder structure
-    else:
-        # --- Actual LLM Call Logic ---
-        try:
-            # 1. Construct a simple prompt (Refine this significantly later)
-            prompt_context = f"User Input Summary: {data.processed_input.get('summary', 'N/A')}\n"
-            if data.rag_context:
-                prompt_context += "Relevant Context:\n" + "\n".join([f"- {ctx.content}" for ctx in data.rag_context]) + "\n"
-            prompt = f"Generate website content for a '{data.processed_input.get('industry', 'general')}' business based on the following:\n{prompt_context}\nGenerate a short welcome message for the homepage hero section."
+    generated_content = "Error: Content generation failed." # Default error message
 
-            print(f"Sending prompt to {LLM_PROVIDER} (model: {OPENAI_MODEL_NAME})...")
+    # --- Construct Prompt ---
+    try:
+        prompt_context = f"User Input Summary: {data.processed_input.get('summary', 'N/A')}\n"
+        if data.rag_context:
+            prompt_context += "Relevant Context:\n" + "\n".join([f"- {ctx.content}" for ctx in data.rag_context]) + "\n"
+        prompt = f"Generate website content for a '{data.processed_input.get('industry', 'general')}' business based on the following:\n{prompt_context}\nGenerate a short welcome message for the homepage hero section."
+    except Exception as e:
+        print(f"Error constructing prompt: {e}")
+        raise HTTPException(status_code=500, detail="Error constructing prompt.")
 
-            # 2. Call the LLM
-            # Example using OpenAI chat completions API
+    # --- Call LLM based on Provider ---
+    try:
+        if LLM_PROVIDER == "openai":
+            if not llm_client:
+                raise HTTPException(status_code=503, detail="OpenAI client not available or configured (check API key).")
+            print(f"Sending prompt to OpenAI (model: {OPENAI_MODEL_NAME})...")
             chat_completion = llm_client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": "You are a helpful website content generator."},
                     {"role": "user", "content": prompt},
                 ],
                 model=OPENAI_MODEL_NAME,
-                # Add other parameters like max_tokens, temperature as needed
             )
             generated_content = chat_completion.choices[0].message.content
-            print(f"Received content from LLM: {generated_content[:100]}...")
+            print(f"Received content from OpenAI: {generated_content[:100]}...")
 
-            # 3. TODO: Parse the LLM response into the PageContent/SectionContent structure
-            # 4. TODO: Apply Design Rules Engine checks
-            # 5. TODO: Handle errors, retries, content safety filtering
+        elif LLM_PROVIDER == "ollama":
+            print(f"Sending prompt to Ollama (model: {OLLAMA_MODEL_NAME})...")
+            ollama_url = f"{OLLAMA_BASE_URL}/api/chat"
+            payload = {
+                "model": OLLAMA_MODEL_NAME,
+                "messages": [
+                     {"role": "system", "content": "You are a helpful website content generator."},
+                     {"role": "user", "content": prompt}
+                ],
+                "stream": False
+            }
+            response = requests.post(ollama_url, headers={"Content-Type": "application/json"}, data=json.dumps(payload))
+            response.raise_for_status()
+            response_data = response.json()
+            generated_content = response_data.get("message", {}).get("content", "Error: Could not parse Ollama response.")
+            print(f"Received content from Ollama: {generated_content[:100]}...")
 
-        except OpenAIError as e: # Catch specific OpenAI errors
-            print(f"OpenAI API error: {e}")
-            raise HTTPException(status_code=500, detail=f"OpenAI API error: {e}")
-        except Exception as e: # Catch other potential errors
-            print(f"Error during LLM content generation: {e}")
-            raise HTTPException(status_code=500, detail="Error generating content.")
+        # elif LLM_PROVIDER == "anthropic":
+            # Add Anthropic logic here, checking for its client
+            # pass
+
+        elif LLM_PROVIDER == "none":
+            print("LLM_PROVIDER is 'none', returning placeholder content.")
+            generated_content = "Placeholder content - LLM provider set to none."
+
+        else:
+             raise HTTPException(status_code=501, detail=f"LLM provider '{LLM_PROVIDER}' not supported.")
+
+        # 3. TODO: Parse the LLM response into the PageContent/SectionContent structure
+        # 4. TODO: Apply Design Rules Engine checks
+        # 5. TODO: Handle errors, retries, content safety filtering
+
+    except OpenAIError as e:
+        print(f"OpenAI API error: {e}")
+        raise HTTPException(status_code=500, detail=f"OpenAI API error: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"Ollama connection error: {e}")
+        raise HTTPException(status_code=500, detail=f"Ollama connection error: {e}")
+    except Exception as e:
+        print(f"Error during LLM content generation: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating content: {e}")
 
     # --- Format Output (Using placeholder structure for now) ---
-    # Replace this with actual parsed content from the LLM response later
     placeholder_pages = [
         PageContent(type="homepage", sections=[
-            SectionContent(id="hero", title="Welcome!", content=generated_content if llm_client else "Placeholder - LLM not configured", seoScore=0.8),
+            SectionContent(id="hero", title="Welcome!", content=generated_content, seoScore=0.8),
             SectionContent(id="features", title="Our Features", content="Placeholder feature descriptions...", seoScore=0.7)
         ]),
         PageContent(type="about", sections=[

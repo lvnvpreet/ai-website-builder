@@ -1,16 +1,25 @@
 fastapi>=0.100.0
 uvicorn[standard]>=0.20.0
 python-dotenv>=1.0.0
-httpx>=0.25.0 # For potential async operations or calling other services
+httpx>=0.25.0
 
-# RAG Specific Dependencies
-# Vector DB Client (Example - Use 'pinecone' package now)
+# Vector database
 pinecone>=4.0.0
 
-# Embedding Model Library
-sentence-transformers>=2.0.0
+# Embedding models
+sentence-transformers>=2.2.0
 
-# Langchain (for chunking, potentially orchestration)
-langchain>=0.1.0
+# Reranking
+cross-encoder>=2.5.0
 
-# Reranker (Optional - can use sentence-transformers cross-encoders later)
+# Document processing
+langchain>=0.1.0  # Document loading and chunking
+unstructured>=0.8.0  # Document parsing
+tiktoken>=0.5.0  # Token counting for OpenAI models
+pymupdf>=1.22.0  # PDF processing
+python-docx>=0.8.11  # Word document processing
+openpyxl>=3.1.0  # Excel processing
+
+# Metrics and monitoring
+prometheus-client>=0.15.0  # Metrics collection
+tenacity>=8.2.0  # Retry logic
